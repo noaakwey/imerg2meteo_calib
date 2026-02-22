@@ -4,15 +4,22 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import argparse
 
 def main():
+    parser = argparse.ArgumentParser(description="Analyze calibration results.")
+    parser.add_argument("--dataset", type=str, choices=['imerg', 'era5land'], default='imerg',
+                        help="Choose which dataset to analyze (default: imerg)")
+    args = parser.parse_args()
+    
     base_dir = r"d:\Cache\Yandex.Disk\РАЗРАБОТКА\code\imerg2meteo_calib"
-    metrics_file = os.path.join(base_dir, "output", "validation_metrics_test.csv")
-    out_plots_dir = os.path.join(base_dir, "output", "plots")
+    metrics_file = os.path.join(base_dir, "output", f"calib_{args.dataset}", f"validation_metrics_{args.dataset}.csv")
+        
+    out_plots_dir = os.path.join(base_dir, "output", f"plots_{args.dataset}")
     os.makedirs(out_plots_dir, exist_ok=True)
     
     if not os.path.exists(metrics_file):
-        print("Metrics file not found. Run main.py first.")
+        print(f"Metrics file not found: {metrics_file}. Run main.py --dataset {args.dataset} first.")
         return
         
     df = pd.read_csv(metrics_file)
@@ -23,7 +30,7 @@ def main():
             
     stats = df[cols].agg(['mean', 'median', 'std']).T
     stats.to_csv(os.path.join(out_plots_dir, "summary_statistics.csv"))
-    print("Summary Statistics:")
+    print(f"Summary Statistics ({args.dataset.upper()}):")
     print(stats)
     
     # 2. Boxplots of KGE (Monthly and Daily)
@@ -34,7 +41,7 @@ def main():
     kge_data_filtered = kge_data[(kge_data['KGE'] > -2) & (kge_data['KGE'] < 1)]
     
     sns.boxplot(data=kge_data_filtered, x='Metric', y='KGE', palette='Set2')
-    plt.title('Распределение метрики KGE до и после калибровки (QM)')
+    plt.title(f'Распределение метрики KGE до и после калибровки ({args.dataset.upper()} QM)')
     plt.ylabel('KGE (Kling-Gupta Efficiency)')
     plt.xticks(rotation=15)
     plt.axhline(0, color='red', linestyle='--', alpha=0.5)
@@ -46,11 +53,10 @@ def main():
     plt.figure(figsize=(10, 6))
     pbias_data = pd.melt(df, value_vars=['daily_PBIAS_raw', 'daily_PBIAS_corr', 'monthly_PBIAS_raw', 'monthly_PBIAS_corr'], 
                          var_name='Metric', value_name='PBIAS')
-    # Filter out extreme outliers for better visualization
     pbias_data_filtered = pbias_data[(pbias_data['PBIAS'] > -100) & (pbias_data['PBIAS'] < 200)]
     
     sns.boxplot(data=pbias_data_filtered, x='Metric', y='PBIAS', palette='Set3')
-    plt.title('Распределение ошибки PBIAS (%) до и после калибровки (QM)')
+    plt.title(f'Распределение ошибки PBIAS (%) до и после калибровки ({args.dataset.upper()} QM)')
     plt.ylabel('PBIAS (%)')
     plt.xticks(rotation=15)
     plt.axhline(0, color='red', linestyle='--', alpha=0.5)
@@ -63,7 +69,7 @@ def main():
     best_wmo = best_station['wmo_index']
     best_name = best_station['station_name']
     
-    calib_files = glob.glob(os.path.join(base_dir, "output", "calib", f"*_{best_wmo}_calib.csv"))
+    calib_files = glob.glob(os.path.join(base_dir, "output", f"calib_{args.dataset}", f"*_{best_wmo}_calib.csv"))
     if calib_files:
         best_df = pd.read_csv(calib_files[0])
         best_df['datetime'] = pd.to_datetime(best_df['datetime'])
@@ -73,26 +79,26 @@ def main():
         val_mask = (best_df['datetime'] >= '2016-01-01') & (best_df['datetime'] <= '2021-12-31')
         monthly_best = best_df[val_mask].groupby('year_month').agg({
             'P_station_mm': 'sum',
-            'P_imerg_mm': 'sum',
+            'P_sat_mm': 'sum',
             'P_corrected_mm': 'sum'
         }).reset_index()
         
         plt.figure(figsize=(12, 5))
         
         plt.subplot(1, 2, 1)
-        plt.scatter(monthly_best['P_station_mm'], monthly_best['P_imerg_mm'], alpha=0.6, color='blue')
+        plt.scatter(monthly_best['P_station_mm'], monthly_best['P_sat_mm'], alpha=0.6, color='blue')
         plt.plot([0, monthly_best['P_station_mm'].max()], [0, monthly_best['P_station_mm'].max()], 'r--')
-        plt.title(f'Сырые данные IMERG\nСтанция {best_name}')
+        plt.title(f'Сырые данные {args.dataset.upper()}\nСтанция {best_name}')
         plt.xlabel('Осадки по метеостанции, мм/месяц')
-        plt.ylabel('Осадки IMERG (сырые), мм/месяц')
+        plt.ylabel(f'Осадки {args.dataset.upper()} (сырые), мм/месяц')
         plt.grid(True, alpha=0.3)
         
         plt.subplot(1, 2, 2)
         plt.scatter(monthly_best['P_station_mm'], monthly_best['P_corrected_mm'], alpha=0.6, color='green')
         plt.plot([0, monthly_best['P_station_mm'].max()], [0, monthly_best['P_station_mm'].max()], 'r--')
-        plt.title(f'Откалиброванные данные IMERG (QM)\nСтанция {best_name}')
+        plt.title(f'Откалиброванные данные {args.dataset.upper()} (QM)\nСтанция {best_name}')
         plt.xlabel('Осадки по метеостанции, мм/месяц')
-        plt.ylabel('Осадки IMERG (калибр.), мм/месяц')
+        plt.ylabel(f'Осадки {args.dataset.upper()} (калибр.), мм/месяц')
         plt.grid(True, alpha=0.3)
         
         plt.tight_layout()

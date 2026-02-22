@@ -27,4 +27,14 @@ if os.path.exists(imerg_zip):
     with zipfile.ZipFile(imerg_zip, 'r', metadata_encoding='cp866') as z2:
         z2.extractall(imerg_out)
 
+era5_zip = os.path.join(base_dir, "ERA5LAND_STATIONS_3H.zip")
+era5_out = os.path.join(base_dir, "era5land")
+if os.path.exists(era5_zip):
+    if os.path.exists(era5_out):
+        shutil.rmtree(era5_out)
+    os.makedirs(era5_out, exist_ok=True)
+    print("Extracting ERA5-Land data with cp866 encoding...")
+    with zipfile.ZipFile(era5_zip, 'r', metadata_encoding='cp866') as z3:
+        z3.extractall(era5_out)
+
 print("Extraction complete.")

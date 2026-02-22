@@ -1,6 +1,7 @@
 # Data directories
 data/imerg/
 data/meteo/
+data/era5land/
 
 # Output directories
 output/

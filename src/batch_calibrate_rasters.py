@@ -12,7 +12,7 @@ except ImportError:
     print("rioxarray not installed. Please run: pip install rioxarray")
 
 # Import our QM functions
-from qm_calibration import get_season, fit_qm_transfer, apply_qm
+from qm_calibration import get_season, fit_qm_transfer, apply_qm, fit_highres_qm
 
 def load_station_metadata(meteo_dir):
     """
@@ -33,7 +33,7 @@ def load_station_metadata(meteo_dir):
             pass
     return pd.DataFrame(meta)
 
-def precalculate_qm_models(calib_dir, train_start='2001-01-01', train_end='2015-12-31'):
+def precalculate_qm_models(calib_dir, train_start='2001-01-01', train_end='2015-12-31', dataset='imerg'):
     """
     Reads the calibrated CSVs to extract training paired data and refits QM.
     Returns: dict[season][wmo_index] = (q_imerg, q_station, slope)
@@ -52,14 +52,19 @@ def precalculate_qm_models(calib_dir, train_start='2001-01-01', train_end='2015-
         for season in models.keys():
             season_df = train_df[train_df['season'] == season]
             
-            p_im = season_df[season_df['P_imerg_mm'] > 0]['P_imerg_mm'].values
-            p_st = season_df[season_df['P_station_mm'] > 0]['P_station_mm'].values
+            p_im_all = season_df['P_sat_mm'].values
+            p_st_all = season_df['P_station_mm'].values
             
-            if len(p_im) >= 5 and len(p_st) >= 5:
-                # 99 percentiles as per our methodology
-                q_range = np.arange(0.01, 1.00, 0.01)
-                qm_params = fit_qm_transfer(p_im, p_st, q_range)
-                models[season][wmo] = qm_params
+            if len(p_im_all) >= 20 and len(p_st_all) >= 20:
+                if dataset == 'era5land':
+                    q_sat, q_station, slope, p_th = fit_highres_qm(p_im_all, p_st_all, num_quantiles=1000)
+                    if q_sat is not None:
+                        models[season][wmo] = (q_sat, q_station, slope, p_th)
+                else:
+                    q_range = np.arange(0.01, 1.00, 0.01)
+                    qm_params = fit_qm_transfer(p_im_all, p_st_all, q_range)
+                    if qm_params[0] is not None:
+                        models[season][wmo] = qm_params
                 
     return models
 
@@ -142,8 +147,9 @@ def batch_process_rasters(tif_dir, out_dir, meteo_dir, calib_dir):
                 if len(vals) > 0:
                     params = qm_models.get(season, {}).get(wmo, None)
                     if params is not None:
-                        q_im, q_st, slope = params
-                        calib_3h[mask] = apply_qm(vals, q_im, q_st, slope)
+                        # Both High-Res EQM and Standard QM emit a 4-tuple: (q_sat, q_station, slope, p_th)
+                        q_im, q_st, slope, p_th = params
+                        calib_3h[mask] = apply_qm(vals, q_im, q_st, slope, p_th)
                     else:
                         calib_3h[mask] = vals # fallback if no model
                         
@@ -174,7 +180,7 @@ if __name__ == '__main__':
     INPUT_RST_DIR = os.path.join(BASE_DIR, "data", "imerg", "geotiff_1h") # Folder with GEE TIFs
     OUT_RST_DIR = os.path.join(BASE_DIR, "output", "geotiff_calib")
     METEO_DIR = os.path.join(BASE_DIR, "data", "meteo", "срочные данные_осадки")
-    CALIB_CSV_DIR = os.path.join(BASE_DIR, "output", "calib")
+    CALIB_CSV_DIR = os.path.join(BASE_DIR, "output", "calib_imerg")
     
     # Uncomment to run when TIF folder is populated:
     # batch_process_rasters(INPUT_RST_DIR, OUT_RST_DIR, METEO_DIR, CALIB_CSV_DIR)

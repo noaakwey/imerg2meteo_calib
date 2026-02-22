@@ -18,7 +18,7 @@ lon_kazan = 49.18 # roughly Kazan station
 def main():
     base_dir = r"d:\Cache\Yandex.Disk\РАЗРАБОТКА\code\imerg2meteo_calib"
     tif_file = r"C:\Users\artur\Downloads\IMERG_V07_P1h_mm_2008_Q3_permanent.tif"
-    calib_file = os.path.join(base_dir, "output", "calib", "Казань_27595_calib.csv")
+    calib_file = os.path.join(base_dir, "output", "calib_imerg", "Казань_27595_calib.csv")
     out_dir = os.path.join(base_dir, "output", "kazan_test")
     os.makedirs(out_dir, exist_ok=True)
     
@@ -73,14 +73,14 @@ def main():
     df_1h['window_3h'] = df_1h['datetime_1h'].dt.ceil('3H')
     
     # Merge with 3-hour calibrated data
-    df_merged = pd.merge(df_1h, df_jul2008[['datetime', 'P_station_mm', 'P_imerg_mm', 'P_corrected_mm']], 
+    df_merged = pd.merge(df_1h, df_jul2008[['datetime', 'P_station_mm', 'P_sat_mm', 'P_corrected_mm']], 
                          left_on='window_3h', right_on='datetime', how='left')
                          
     # Calculate 1-hour calibrated values
     # P_calib_1h = P_corr_3h * (P_raw_1h / P_raw_3h)
     
     # First, calculate P_raw_3h from the 1-hour data as the sum within the window
-    # Wait, the df_merged already has P_imerg_mm (which is the 3h sum from the calibrated file)
+    # Wait, the df_merged already has P_sat_mm (which is the 3h sum from the calibrated file)
     # But let's calculate the sum of 1-hour raw to be safe as weights
     window_sums = df_1h.groupby('window_3h')['P_raw_1h'].sum().rename('P_raw_1h_sum')
     df_merged = df_merged.merge(window_sums, on='window_3h', how='left')
@@ -102,7 +102,7 @@ def main():
                       
     print("\n--- Июль 21, 2008 (г. Казань) ---")
     print(f"Сырой IMERG сумма (1h aggregated) за день: {jul21['P_raw_1h'].sum():.2f} мм")
-    print(f"Сырой IMERG сумма (3h) за день: {jul21.drop_duplicates('window_3h')['P_imerg_mm'].sum():.2f} мм")
+    print(f"Сырой IMERG сумма (3h) за день: {jul21.drop_duplicates('window_3h')['P_sat_mm'].sum():.2f} мм")
     print(f"Откалиброванный IMERG сумма (QM) за день: {jul21['P_calib_1h'].sum():.2f} мм")
     print(f"Фактические осадки по станции: {jul21.drop_duplicates('window_3h')['P_station_mm'].sum():.2f} мм")
     

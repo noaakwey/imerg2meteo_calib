@@ -1,24 +1,42 @@
 import os
 import glob
 import pandas as pd
+import argparse
 from tqdm import tqdm
 
-from data_loader import load_meteo_station, load_imerg_data, pair_datasets
-from qm_calibration import calibrate_station
+from data_loader import load_meteo_station, load_satellite_data, pair_datasets
+from qm_calibration import calibrate_station, calibrate_station_moving_window
 from validation import aggregate_and_validate
 
 def main():
+    parser = argparse.ArgumentParser(description="Calibrate precipitation data.")
+    parser.add_argument("--dataset", type=str, choices=['imerg', 'era5land'], default='imerg',
+                        help="Choose which dataset to calibrate (default: imerg)")
+    args = parser.parse_args()
+
     base_dir = r"d:\Cache\Yandex.Disk\РАЗРАБОТКА\code\imerg2meteo_calib"
     meteo_dir = os.path.join(base_dir, "data", "meteo", "срочные данные_осадки")
-    imerg_dir = os.path.join(base_dir, "data", "imerg", "IMERG_STATIONS_3H")
     
-    out_dir = os.path.join(base_dir, "output")
-    out_dir_calib = os.path.join(out_dir, "calib")
-    os.makedirs(out_dir_calib, exist_ok=True)
+    if args.dataset == 'imerg':
+        sat_dir = os.path.join(base_dir, "data", "imerg", "IMERG_STATIONS_3H")
+        sat_pattern = "IMERG_V07_P3H_mm_*_permanent_trailing.csv"
+        out_dir = os.path.join(base_dir, "output", "calib_imerg")
+        train_start = '2001-01-01'
+    elif args.dataset == 'era5land':
+        sat_dir = os.path.join(base_dir, "data", "era5land", "ERA5LAND_STATIONS_3H")
+        sat_pattern = "ERA5Land_P3H_mm_*.csv"
+        out_dir = os.path.join(base_dir, "output", "calib_era5land")
+        train_start = '2001-01-01'  # Сокращено с 1966: устраняет нестационарность климата (PBIAS -31% → ≈0%)
+        
+    train_end = '2015-12-31'
+    val_start = '2016-01-01'
+    val_end = '2021-12-31'
     
-    print("Loading IMERG dataset (this may take a minute)...")
-    imerg_all = load_imerg_data(imerg_dir)
-    print(f"IMERG dataset loaded: {len(imerg_all)} non-NaN records.")
+    os.makedirs(out_dir, exist_ok=True)
+    
+    print(f"Loading {args.dataset.upper()} dataset (this may take a minute)...")
+    sat_all = load_satellite_data(sat_dir, sat_pattern)
+    print(f"{args.dataset.upper()} dataset loaded: {len(sat_all)} non-NaN records.")
     
     meteo_files = glob.glob(os.path.join(meteo_dir, "*.csv"))
     print(f"Found {len(meteo_files)} meteo stations.")
@@ -26,9 +44,7 @@ def main():
     all_metrics = []
     
     # Process all stations
-    limit_stations = len(meteo_files)
-    
-    for mf in tqdm(meteo_files[:limit_stations], desc="Processing stations"):
+    for mf in tqdm(meteo_files, desc="Processing stations"):
         st_name = os.path.splitext(os.path.basename(mf))[0]
         
         # 1. Load meteo
@@ -43,23 +59,28 @@ def main():
             
         wmo_idx = meteo_df['wmo_index'].iloc[0]
         
-        # 2. Filter IMERG to this station
-        imerg_st = imerg_all[imerg_all['wmo_index'] == wmo_idx]
-        if imerg_st.empty:
+        # 2. Filter Satellite to this station
+        sat_st = sat_all[sat_all['wmo_index'] == wmo_idx]
+        if sat_st.empty:
             continue
             
         # 3. Pair datasets
-        paired_df = pair_datasets(meteo_df, imerg_st)
+        paired_df = pair_datasets(meteo_df, sat_st)
         
-        # 4. Calibrate (wet-day QM)
-        calibrated_df = calibrate_station(paired_df, train_start='2001-01-01', train_end='2015-12-31')
+        # 4. Calibrate
+        if args.dataset == 'era5land':
+            calibrated_df = calibrate_station_moving_window(
+                paired_df, half_window=15, val_start=val_start, val_end=val_end)
+        else:
+            calibrated_df = calibrate_station(
+                paired_df, train_start=train_start, train_end=train_end, dataset=args.dataset)
         
         # 5. Save calibration results
-        out_csv = os.path.join(out_dir_calib, f"{st_name}_{wmo_idx}_calib.csv")
+        out_csv = os.path.join(out_dir, f"{st_name}_{wmo_idx}_calib.csv")
         calibrated_df.to_csv(out_csv, index=False)
         
         # 6. Evaluate metrics
-        metrics = aggregate_and_validate(calibrated_df, date_start='2016-01-01', date_end='2021-12-31')
+        metrics = aggregate_and_validate(calibrated_df, date_start=val_start, date_end=val_end)
         
         # Flatten metrics for logging
         row = {
@@ -79,10 +100,10 @@ def main():
     # Save overall metrics
     if all_metrics:
         metrics_df = pd.DataFrame(all_metrics)
-        metrics_csv = os.path.join(out_dir, "validation_metrics_test.csv")
+        metrics_csv = os.path.join(out_dir, f"validation_metrics_{args.dataset}.csv")
         metrics_df.to_csv(metrics_csv, index=False)
         print(f"Metrics saved to {metrics_csv}")
-        print("\nAverage metrics sample run:")
+        print(f"\nAverage metrics context run ({args.dataset.upper()}):")
         print(metrics_df[['daily_KGE_raw', 'daily_KGE_corr', 'monthly_KGE_raw', 'monthly_KGE_corr']].mean())
 
 if __name__ == '__main__':

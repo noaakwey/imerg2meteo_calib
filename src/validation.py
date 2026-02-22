@@ -36,7 +36,7 @@ def calc_kge(sim, obs):
     kge = 1.0 - np.sqrt((r - 1)**2 + (alpha - 1)**2 + (beta - 1)**2)
     return kge
 
-def evaluate_metrics(df, obs_col='P_station_mm', raw_sim_col='P_imerg_mm', corr_sim_col='P_corrected_mm'):
+def evaluate_metrics(df, obs_col='P_station_mm', raw_sim_col='P_sat_mm', corr_sim_col='P_corrected_mm'):
     """
     Evaluates PBIAS and KGE on the provided dataframe.
     """
@@ -68,7 +68,7 @@ def aggregate_and_validate(paired_df, date_start='2016-01-01', date_end='2021-12
     val_df['date'] = val_df['datetime'].dt.date
     daily_df = val_df.groupby('date').agg({
         'P_station_mm': 'sum',
-        'P_imerg_mm': 'sum',
+        'P_sat_mm': 'sum',
         'P_corrected_mm': 'sum'
     }).reset_index()
     
@@ -78,7 +78,7 @@ def aggregate_and_validate(paired_df, date_start='2016-01-01', date_end='2021-12
     val_df['year_month'] = val_df['datetime'].dt.to_period('M')
     monthly_df = val_df.groupby('year_month').agg({
         'P_station_mm': 'sum',
-        'P_imerg_mm': 'sum',
+        'P_sat_mm': 'sum',
         'P_corrected_mm': 'sum'
     }).reset_index()
     
