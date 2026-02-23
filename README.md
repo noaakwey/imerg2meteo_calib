@@ -42,32 +42,36 @@ python src/analyze_results.py --dataset imerg
 python src/analyze_results.py --dataset era5land
 ```
 
-## Применение калибровки к растрам IMERG (R-фактор)
+## Применение калибровки к растрам (R-фактор)
 
-Скрипт `apply_qm_to_rasters.py` применяет QM-калибровку к **архиву квартальных GeoTIFF** IMERG, автоматически группируя кварталы по годам. Результат — годовые 1-часовые растры в `output/imerg_rfactor_calib/`.
+Скрипт `apply_qm_to_rasters.py` применяет QM-калибровку к архивам квартальных GeoTIFF, группируя кварталы по годам. Поддерживаются два датасета:
+
+| Датасет | Шаг | Файл | Выход |
+|---------|-----|----|------|
+| `imerg` | 30 мин, мм/ч | `IMERG_V07_P30min_mmh_YYYY_QN_permanent.tif` | `output/imerg_rfactor_calib/` |
+| `era5land` | 1 ч, мм/ч | `ERA5Land_P1h_mm_YYYY_QN.tif` | `output/era5land_rfactor_calib/` |
 
 ```bash
-# Обработать все годы (2001–2025)
-python src/apply_qm_to_rasters.py
+# IMERG — все годы
+python src/apply_qm_to_rasters.py --dataset imerg
 
-# Обработать один год
-python src/apply_qm_to_rasters.py --year 2010
+# ERA5-Land — один год
+python src/apply_qm_to_rasters.py --dataset era5land --year 2010
 
 # Нестандартные пути
-python src/apply_qm_to_rasters.py \
+python src/apply_qm_to_rasters.py --dataset imerg \
     --zip  "path/to/IMERG_RFACTOR_ANNUAL.zip" \
     --out  "path/to/output/" \
-    --calib "path/to/calib_imerg/" \
-    --meteo "path/to/meteo/"
+    --calib "path/to/calib_imerg/"
 ```
 
 **Алгоритм:**
-1. Распаковка архива, группировка `YYYY_Q1…Q4` → год.
-2. KNN-сопоставление пикселей растра → ближайшая метеостанция (cKDTree).
-3. Full-Distribution QM (1000 квантилей) + Volume Scaling по сезонам (DJF / MAM / JJA / SON).
-4. Запись годовых GeoTIFF (float32, LZW, tiled 256×256) с временны́ми метками бэндов.
+1. Распаковка архива, группировка `YYYY_Q1…Q4` → годовой ряд.
+2. KNN-сопоставление пикселей → ближайшая метеостанция (cKDTree).
+3. Для каждого 3-часового окна: сумма слотов (мм) → QM-коррекция → пропорциональная дезагрегация обратно → интенсивность мм/ч. Сезонное разбиение: DJF / MAM / JJA / SON.
+4. Запись годового GeoTIFF (float32, LZW, tiled 256×256) с временны́ми метками бэндов.
 
-> Скрипт идемпотентен: пропускает годы, для которых уже существует выходной файл.
+> Скрипт идемпотентен: пропускает уже существующие годы.
 
 ## Структура проекта
 
@@ -75,8 +79,7 @@ python src/apply_qm_to_rasters.py \
 src/
   main.py                      # Калибровка по точечным данным станций
   qm_calibration.py            # Full-Distribution QM, Moving Window QM
-  apply_qm_to_rasters.py       # Пакетное применение QM к архиву растров IMERG
-  batch_calibrate_rasters.py   # (устарел) Прежний прототип обработки растров
+  apply_qm_to_rasters.py       # Пакетное применение QM к архивам растров
   data_loader.py               # Загрузка метеоданных и спутниковых рядов
   validation.py                # Метрики KGE, PBIAS
   analyze_results.py           # Графики и сводная статистика
@@ -89,7 +92,8 @@ data/
 output/
   calib_imerg/                   # *_calib.csv + validation_metrics_imerg.csv
   calib_era5land/                # *_calib.csv + validation_metrics_era5land.csv
-  imerg_rfactor_calib/           # IMERG_V07_P1h_mm_YYYY_calib_qm.tif (годовые)
+  imerg_rfactor_calib/           # IMERG_V07_P30min_mmh_YYYY_calib_qm.tif
+  era5land_rfactor_calib/        # ERA5Land_P1h_mm_YYYY_calib_qm.tif
 ```
 
 Данные не включены в репозиторий (`data/` в `.gitignore`).
