@@ -1,3 +1,12 @@
+"""
+Legacy prototype script.
+
+Production raster calibration pipeline is implemented in:
+  src/apply_qm_to_rasters.py
+
+Current IMERG main mode: v5_year_anchor.
+"""
+
 import os
 import glob
 import pandas as pd

@@ -4,6 +4,8 @@ import os
 import glob
 from pathlib import Path
 
+ALL_3H_HOURS = (0, 3, 6, 9, 12, 15, 18, 21)
+
 def load_meteo_station(filepath):
     """
     Loads meteo station data from CSV.
@@ -54,31 +56,52 @@ def load_satellite_data(folder_path, file_pattern):
     
     return sat_df[['wmo_index', 'datetime', 'P_sat_mm']]
 
-def pair_datasets(meteo_df, sat_df):
+def pair_datasets(meteo_df, sat_df, force_full_3h_grid=True):
     """
     Pairs satellite data to station data on wmo_index and datetime.
-    Filters to only 3-hour terms (03, 06, 15, 18 UTC).
-    For these terms, if Satellite has a record but Meteo is missing, Meteo gets P = 0.
+    Filters to 3-hour synoptic terms.
+    Crucially, creates a COMPLETE time grid between min and max dates.
+    Missing records for both Satellite and Meteo are filled with P = 0.
+    This prevents severe QM overestimation on continuous raster data.
     """
-    # Find which 3-hour hours are supported by this specific station
-    # (some only support 3 and 15, others also 6 and 18)
-    supported_3h_hours = set(meteo_df['Hour'].unique()).intersection({3, 6, 15, 18})
+    if force_full_3h_grid:
+        target_hours = set(ALL_3H_HOURS)
+    else:
+        # Legacy behavior: only hours observed in station file.
+        target_hours = set(meteo_df['Hour'].unique()).intersection(set(ALL_3H_HOURS))
+        if not target_hours:
+            target_hours = set(ALL_3H_HOURS)
+
+    sat_filtered = sat_df[sat_df['datetime'].dt.hour.isin(target_hours)].copy()
+    meteo_filtered = meteo_df[meteo_df['Hour'].isin(target_hours)][['wmo_index', 'datetime', 'P_station_mm']]
+    # Defensive de-duplication before merge to avoid accidental row multiplication.
+    sat_filtered = sat_filtered.groupby('datetime', as_index=False)['P_sat_mm'].sum()
+    meteo_filtered = meteo_filtered.groupby('datetime', as_index=False)['P_station_mm'].sum()
+
+    wmo = meteo_df['wmo_index'].iloc[0]
     
-    # Filter Satellite to only those supported hours
-    sat_filtered = sat_df[sat_df['datetime'].dt.hour.isin(supported_3h_hours)].copy()
+    # Define complete time range
+    min_time = min(sat_filtered['datetime'].min() if len(sat_filtered) else pd.Timestamp('2099-01-01'), 
+                   meteo_filtered['datetime'].min() if len(meteo_filtered) else pd.Timestamp('2099-01-01'))
+    max_time = max(sat_filtered['datetime'].max() if len(sat_filtered) else pd.Timestamp('1900-01-01'), 
+                   meteo_filtered['datetime'].max() if len(meteo_filtered) else pd.Timestamp('1900-01-01'))
+                   
+    if min_time > max_time:
+        return pd.DataFrame(columns=['wmo_index', 'datetime', 'P_sat_mm', 'P_station_mm'])
+
+    # Create complete 3-hour grid and keep canonical synoptic terms
+    full_idx = pd.date_range(min_time, max_time, freq='3h')
+    full_idx = full_idx[full_idx.hour.isin(target_hours)]
     
-    # Filter meteo to these supported hours
-    meteo_filtered = meteo_df[meteo_df['Hour'].isin(supported_3h_hours)][['wmo_index', 'datetime', 'P_station_mm']]
+    full_df = pd.DataFrame({'datetime': full_idx, 'wmo_index': wmo})
     
-    # Merge left on Satellite so missing meteo records become NaNs
-    merged = pd.merge(
-        sat_filtered, 
-        meteo_filtered, 
-        on=['wmo_index', 'datetime'], 
-        how='left'
-    )
+    # Merge Satellite
+    merged = pd.merge(full_df, sat_filtered[['datetime', 'P_sat_mm']], on='datetime', how='left')
+    # Merge Meteo
+    merged = pd.merge(merged, meteo_filtered[['datetime', 'P_station_mm']], on='datetime', how='left')
     
-    # Missing meteo records indicate P_station = 0
+    # Fill NAs with 0.0 (no precipitation reported)
+    merged['P_sat_mm'] = merged['P_sat_mm'].fillna(0.0)
     merged['P_station_mm'] = merged['P_station_mm'].fillna(0.0)
     
     return merged

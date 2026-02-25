@@ -65,7 +65,7 @@ def main():
             continue
             
         # 3. Pair datasets
-        paired_df = pair_datasets(meteo_df, sat_st)
+        paired_df = pair_datasets(meteo_df, sat_st, force_full_3h_grid=True)
         
         # 4. Calibrate
         if args.dataset == 'era5land':
