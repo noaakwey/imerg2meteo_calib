@@ -37,7 +37,7 @@ Outputs:
 ```bash
 python src/apply_qm_to_rasters.py \
   --dataset imerg \
-  --zip "D:\Cache\Yandex.Disk\РНФ25-28\Осадки\IMERG_RFACTOR_ANNUAL-20260223T120530Z-1-001.zip" \
+  --zip "IMERG_RFACTOR_ANNUAL.zip" \
   --calib output/calib_imerg
 ```
 
