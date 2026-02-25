@@ -1,20 +1,19 @@
-# Documentation index
+# Документация
 
-## Main (current)
-- `methodology_imerg_main.md` — current IMERG methodology (v5 main).
-- `evidence_imerg_qc_main.md` — full evidence pack and version comparison.
+## Методика
 
-## Core tables
-- `kazan_summary_v2_v3_v4_v5.csv`
-- `kazan_v2_v3_v4_v5_full_years.csv`
-- `aoi_annual_quantiles_v5_year_anchor.csv`
-- `aoi_v3_vs_v5_delta.csv`
-- `station_annual_pbias_summary_imerg.csv`
+- **[методика.md](методика.md)** — полная методика калибровки, включая описание всех экспериментов, таблицы контроля качества и графические материалы.
 
-## Legacy references
-- `methodology_imerg_v2.md`
-- `evidence_imerg_qc.md`
-- `evidence_imerg_qc_v3_soft.md`
-- `evidence_imerg_qc_v5_year_anchor.md`
-- `methodology.md` (legacy combined doc)
+## Таблицы контроля качества
 
+| Файл | Содержание |
+|------|-----------|
+| `kazan_summary_v2_v3_v4_v5.csv` | Сводка метрик |PBIAS| по версиям калибровки (Казань) |
+| `kazan_v2_v3_v4_v5_full_years.csv` | Годовые суммы и PBIAS по всем версиям (Казань, 2001–2024) |
+| `aoi_annual_quantiles_v5_year_anchor.csv` | Квантили годовых сумм по AOI (v5, 2001–2025) |
+| `aoi_v3_vs_v5_delta.csv` | Сдвиг квантилей AOI: v5 относительно v3_soft (%) |
+| `station_annual_pbias_summary_imerg.csv` | Агрегированный PBIAS по 200 станциям |
+
+## Графика
+
+Каталог `graphics/` содержит 22 диаграммы, автоматически генерируемые скриптом `src/build_imerg_evidence_pack.py`. Все графики интегрированы в файл методики.

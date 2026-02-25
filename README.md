@@ -1,92 +1,101 @@
-# IMERG/ERA5 precipitation calibration for RUSLE R-factor
+# Калибровка осадков IMERG V07 и ERA5-Land для расчёта R-фактора RUSLE
 
-## Purpose
-Repository for station-based calibration of precipitation time series and raster stacks, focused on:
-- realistic annual water balance,
-- preserved sub-daily intensity structure for `R` and `I30`,
-- robust behavior in extreme wet/dry years.
+## Назначение
 
-Primary operational IMERG mode is now **`v5_year_anchor`**.
+Репозиторий содержит инструменты станционной калибровки спутниковых и реанализных данных об осадках для восстановления реалистичного водного баланса, сохранения субсуточной структуры интенсивности ($R$, $I_{30}$) и устойчивого поведения в экстремальные годы.
 
-## Current main method (IMERG)
-Main raster workflow (`src/apply_qm_to_rasters.py`, dataset `imerg`) applies:
-1. Seasonal 3-hour soft QM (station-zone based, nearest-station Voronoi).
-2. Daily soft guard.
-3. Year-specific annual anchor (`station_year / sat_year` ratio for full years).
-4. Annual transfer mapping.
-5. Final annual sanity envelope guard.
+Основной рабочий режим IMERG — **v5_year_anchor**.
 
-This is the best validated setup for historical reconstruction in this project.
+## Исходные данные
 
-## Quick start
+| Продукт | Источник | Период | Разрешение |
+|---------|----------|--------|------------|
+| IMERG V07 | NASA GPM | 2001–2025 | 30 мин, 0.1° |
+| ERA5-Land | ECMWF | 1966–2025 | 1 ч, 0.1° |
+| Наземные станции | Росгидромет | 202 станции | 3-часовые сроки |
+
+## Быстрый старт
+
+### Установка
 ```bash
-pip install -r requirements.txt
+pip install numpy pandas rasterio rioxarray matplotlib
 ```
 
-### 1) Build station calibration tables (`*_calib.csv`)
+### 1. Распаковка данных
+```bash
+python unpack_data.py
+```
+
+### 2. Построение калибровочных таблиц
 ```bash
 python src/main.py --dataset imerg
 python src/main.py --dataset era5land
 ```
 
-Outputs:
-- `output/calib_imerg/`
-- `output/calib_era5land/`
-
-### 2) Apply IMERG calibration to annual raster archive (main pipeline)
+### 3. Применение калибровки к растровому архиву
 ```bash
 python src/apply_qm_to_rasters.py \
   --dataset imerg \
-  --zip "D:\Cache\Yandex.Disk\РНФ25-28\Осадки\IMERG_RFACTOR_ANNUAL-20260223T120530Z-1-001.zip" \
+  --zip "путь/к/IMERG_RFACTOR_ANNUAL.zip" \
   --calib output/calib_imerg
 ```
 
-Default IMERG output (main):
-- `output/imerg_rfactor_calib_v5_year_anchor/`
-
-### 3) Build full evidence pack (tables + plots + report)
+### 4. Генерация доказательной базы
 ```bash
 python src/build_imerg_evidence_pack.py
 ```
 
-Main evidence report:
-- `docs/evidence_imerg_qc_main.md`
+## Структура репозитория
 
-## Full pipeline (recommended order)
-1. Prepare/update source station and satellite tables in `data/`.
-2. Run `src/main.py --dataset imerg`.
-3. Run `src/apply_qm_to_rasters.py --dataset imerg ...`.
-4. Run `src/build_imerg_evidence_pack.py`.
-5. Review:
-   - `docs/kazan_summary_v2_v3_v4_v5.csv`
-   - `docs/kazan_v2_v3_v4_v5_full_years.csv`
-   - `docs/aoi_annual_quantiles_v5_year_anchor.csv`
-   - `docs/evidence_imerg_qc_main.md`
+```
+imerg2meteo_calib/
+├── README.md                    # Этот файл
+├── unpack_data.py               # Распаковка исходных архивов
+├── data/                        # Исходные данные (не в git)
+│   ├── imerg/                   # IMERG 3ч CSV по станциям
+│   ├── era5land/                # ERA5-Land 3ч CSV по станциям
+│   └── meteo/                   # Срочные наблюдения станций
+├── src/                         # Исходный код
+│   ├── main.py                  # Построение калибровочных таблиц
+│   ├── qm_calibration.py        # Ядро квантильного картирования
+│   ├── apply_qm_to_rasters.py   # Применение калибровки к растрам
+│   ├── build_imerg_evidence_pack.py  # Генерация отчётов и графиков
+│   ├── data_loader.py           # Загрузка и подготовка данных
+│   ├── validation.py            # Метрики валидации (KGE, PBIAS)
+│   ├── analyze_results.py       # Визуализация метрик по станциям
+│   ├── batch_calibrate_rasters.py  # Пакетная обработка растров
+│   ├── test_kazan_2008.py       # Тест: верификация по Казани (2008)
+│   └── test_loader.py           # Тест: загрузчик данных
+├── output/                      # Результаты (не в git)
+│   ├── calib_imerg/             # Калибровочные таблицы IMERG
+│   ├── calib_era5land/          # Калибровочные таблицы ERA5-Land
+│   └── imerg_rfactor_calib_v5_year_anchor/  # Калиброванные растры
+└── docs/                        # Документация
+    ├── методика.md              # Полная методика с экспериментами
+    └── graphics/                # Графики и диаграммы (22 файла)
+```
 
-## Historical experiments (for traceability)
-- `v2`: temporal mismatch + KNN fix + annual sanity.
-- `v3_soft`: adaptive soft-QM, softer daily/annual guards.
-- `v4_transfer`: annual raw-to-station transfer.
-- `v5_year_anchor` (main): year-specific annual anchor + transfer + sanity.
+## Методика
 
-Comparison tables/plots are generated automatically by `src/build_imerg_evidence_pack.py`.
+Подробное описание алгоритмов, экспериментов, таблиц и графиков — в файле **[docs/методика.md](docs/методика.md)**.
 
-## Modes and when to use
-- `v5_year_anchor` (main): best for **historical reconstruction** where same-year station annual totals are available.
-- `v4_transfer` / `v3_soft`: safer for **strict out-of-sample** scenarios (no same-year station anchor).
+## Итоговые метрики
 
-## Important paths
-- Station calibration metrics:
-  - `output/calib_imerg/validation_metrics_imerg.csv`
-- Main IMERG rasters:
-  - `output/imerg_rfactor_calib_v5_year_anchor/`
-- Evidence docs:
-  - `docs/README.md`
-  - `docs/evidence_imerg_qc_main.md`
-  - `docs/methodology_imerg_main.md`
+Кросс-валидация на 202 станциях, 2016–2021 гг. (медианы):
 
-## Script map
-- `src/main.py`: builds per-station calibrated tables and validation metrics.
-- `src/apply_qm_to_rasters.py`: applies calibration to raster archives.
-- `src/build_imerg_evidence_pack.py`: regenerates comparison tables, graphics, and final evidence report.
-- `src/analyze_results.py`: boxplots/scatter for station-level validation metrics.
+| Продукт | KGE (мес.) | KGE (сут.) | PBIAS |
+|---------|:---:|:---:|:---:|
+| IMERG — сырой | 0.03 | −0.04 | −68.8% |
+| **IMERG — калиброванный (v5)** | **0.68** | **0.49** | **−1.4%** |
+| ERA5 — сырой | 0.03 | −0.03 | −66.1% |
+| **ERA5 — калиброванный (MW QM)** | **0.72** | **0.58** | **−6.9%** |
+
+## Карта скриптов
+
+| Скрипт | Назначение |
+|--------|-----------|
+| `src/main.py` | Построение калибровочных таблиц по станциям |
+| `src/apply_qm_to_rasters.py` | Применение калибровки к растровым архивам |
+| `src/build_imerg_evidence_pack.py` | Генерация таблиц, графиков и доказательного отчёта |
+| `src/qm_calibration.py` | Ядро квантильного картирования (Full-Distribution QM) |
+| `src/analyze_results.py` | Boxplot/scatter по метрикам станций |
